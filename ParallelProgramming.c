@@ -20,9 +20,9 @@ static void progress_cb(const char* stage, int current, int total) {
 }
 
 int main(int argc, char** argv) {
-    const char* in_file = (argc > 1) ? argv[1] : "resources/input.bmp";
-    const char* spectrum_file = "resources/spectrum.bmp";
-    const char* recon_file = "resources/recovered.bmp";
+    const char* in_file = (argc > 1) ? argv[1] : "resources/input8.bmp";
+    const char* spectrum_file = "resources/spectrum8.bmp";
+    const char* recon_file = "resources/recovered8.bmp";
 
 	// Информация о BMP
     print_bmp_info(in_file);
