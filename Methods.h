@@ -15,6 +15,10 @@ typedef void (*progress_cb_t)(const char* stage, int current, int total);
 
 // set a progress callback (may be NULL to disable)
 void set_progress_callback(progress_cb_t cb);
+// Включить/отключить использование OpenMP (только если проект собран с поддержкой OpenMP)
+void set_use_omp(int use);
+// Установить количество потоков для OpenMP (0 — оставить по умолчанию)
+void set_num_threads(int n);
 
 void dft2d(const cplx* in, cplx* out, int width, int height);
 void idft2d(const cplx* in, cplx* out, int width, int height);

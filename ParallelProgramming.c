@@ -20,12 +20,25 @@ static void progress_cb(const char* stage, int current, int total) {
 }
 
 int main(int argc, char** argv) {
-    const char* in_file = (argc > 1) ? argv[1] : "resources/input8.bmp";
-    const char* spectrum_file = "resources/spectrum8.bmp";
-    const char* recon_file = "resources/recovered8.bmp";
+    // Включить/выключить OMP здесь в коде
+    int flagOMP = 1;
+    int use_omp = flagOMP;
+    const char* in_file = "resources/input.bmp";
+    const char* spectrum_file = "resources/spectrum.bmp";
+    const char* recon_file = "resources/recovered.bmp";
 
 	// Информация о BMP
     print_bmp_info(in_file);
+
+    if (use_omp) {
+        set_use_omp(1);
+        int omp_threads = 16;
+        set_num_threads(omp_threads);
+        printf("OpenMP mode: enabled (threads=%d) (requires build with OpenMP support)\n", omp_threads);
+    } else {
+        set_use_omp(0);
+        printf("OpenMP mode: disabled\n");
+    }
 
     unsigned char* pixels = NULL;
     int width = 0, height = 0;
