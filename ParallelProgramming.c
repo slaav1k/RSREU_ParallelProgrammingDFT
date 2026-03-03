@@ -19,6 +19,27 @@ static void progress_cb(const char* stage, int current, int total) {
     fflush(stdout);
 }
 
+// Масштабирование изображения (ближайший сосед) и сохранение
+static int scale_and_save_from_pixels(unsigned char* pixels, int width, int height, const char* out_path, int scale) {
+    if (!pixels || width <= 0 || height <= 0 || scale <= 0) return -1;
+    int w2 = width * scale;
+    int h2 = height * scale;
+    unsigned char* out = (unsigned char*)malloc((size_t)w2 * h2);
+    if (!out) return -1;
+    for (int y = 0; y < h2; ++y) {
+        int sy = y / scale;
+        for (int x = 0; x < w2; ++x) {
+            int sx = x / scale;
+            out[y * w2 + x] = pixels[sy * width + sx];
+        }
+    }
+    int res = save_bmp_grayscale(out_path, out, w2, h2);
+    if (res == 0) printf("Scaled image saved: %s\n", out_path);
+    else printf("Failed to save scaled image: %s\n", out_path);
+    free(out);
+    return res;
+}
+
 int main(int argc, char** argv) {
     // Включить/выключить OMP здесь в коде
     int flagOMP = 1;
@@ -32,7 +53,7 @@ int main(int argc, char** argv) {
 
     if (use_omp) {
         set_use_omp(1);
-        int omp_threads = 16;
+        int omp_threads = 12;
         set_num_threads(omp_threads);
         printf("OpenMP mode: enabled (threads=%d) (requires build with OpenMP support)\n", omp_threads);
     } else {
@@ -46,6 +67,10 @@ int main(int argc, char** argv) {
         printf("Failed to load %s\n", in_file);
         return 1;
     }
+
+    //// Создать увеличенные версии исходного изображения (2x и 4x)
+    //scale_and_save_from_pixels(pixels, width, height, "resources/input_2.bmp", 2);
+    //scale_and_save_from_pixels(pixels, width, height, "resources/input_4.bmp", 4);
 
     int w = width, h = height;
     cplx* in = (cplx*)malloc(sizeof(cplx) * w * h);
