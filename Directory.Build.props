@@ -1,0 +1,14 @@
+<Project>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(AdditionalIncludeDirectories);C:\Program Files (x86)\Microsoft SDKs\MPI\Include</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(AdditionalLibraryDirectories);C:\Program Files (x86)\Microsoft SDKs\MPI\Lib\x64</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(AdditionalDependencies);msmpi.lib</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <PropertyGroup>
+    <PreprocessorDefinitions>$(PreprocessorDefinitions);USE_MPI</PreprocessorDefinitions>
+  </PropertyGroup>
+</Project>

@@ -5,6 +5,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
 
 // Прогресс бар
 static void progress_cb(const char* stage, int current, int total) {
@@ -41,36 +44,77 @@ static int scale_and_save_from_pixels(unsigned char* pixels, int width, int heig
 }
 
 int main(int argc, char** argv) {
-    // Включить/выключить OMP здесь в коде
-    int flagOMP = 1;
+    // Включить/выключить OMP / MPI здесь в коде
+    int flagOMP = 0;
+    int flagMPI = 1; // set to 1 to enable MPI mode (requires build with USE_MPI and mpiexec)
     int use_omp = flagOMP;
+    int use_mpi = flagMPI;
     const char* in_file = "resources/input.bmp";
     const char* spectrum_file = "resources/spectrum.bmp";
     const char* recon_file = "resources/recovered.bmp";
 
-	// Информация о BMP
-    print_bmp_info(in_file);
+    int mpi_rank = 0, mpi_size = 1;
+    unsigned char* pixels = NULL;
+    int width = 0, height = 0;
 
     if (use_omp) {
         set_use_omp(1);
         int omp_threads = 12;
         set_num_threads(omp_threads);
         printf("OpenMP mode: enabled (threads=%d) (requires build with OpenMP support)\n", omp_threads);
-    } else {
+    }
+    else {
         set_use_omp(0);
         printf("OpenMP mode: disabled\n");
     }
 
-    unsigned char* pixels = NULL;
-    int width = 0, height = 0;
-    if (load_bmp_grayscale(in_file, &pixels, &width, &height) != 0) {
-        printf("Failed to load %s\n", in_file);
-        return 1;
-    }
+    if (use_mpi) {
+#if defined(USE_MPI)
+        MPI_Init(&argc, &argv);
+        MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+        set_use_mpi(1);
+        if (mpi_rank == 0) printf("MPI mode: enabled (USE_MPI), ranks=%d\n", mpi_size);
 
-    //// Создать увеличенные версии исходного изображения (2x и 4x)
-    //scale_and_save_from_pixels(pixels, width, height, "resources/input_2.bmp", 2);
-    //scale_and_save_from_pixels(pixels, width, height, "resources/input_4.bmp", 4);
+        // load image only on MPI root
+        if (mpi_rank == 0) {
+            print_bmp_info(in_file);
+            if (load_bmp_grayscale(in_file, &pixels, &width, &height) != 0) {
+                printf("Failed to load %s\n", in_file);
+                MPI_Finalize();
+                return 1;
+            }
+        }
+
+        // рассылаем размеры всем процессам
+        MPI_Bcast(&width, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&height, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+        // Если не rank 0, выделяем память под pixels
+        if (mpi_rank != 0) {
+            pixels = (unsigned char*)malloc(width * height);
+            if (!pixels) {
+                printf("Rank %d: Failed to allocate pixels\n", mpi_rank);
+                MPI_Finalize();
+                return 1;
+            }
+        }
+
+        // Рассылаем сами пиксели всем процессам
+        MPI_Bcast(pixels, width * height, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+#else
+        printf("MPI mode requested but binary not built with USE_MPI\n");
+        return 1;
+#endif
+    }
+    else {
+        // Non-MPI version
+        print_bmp_info(in_file);
+        if (load_bmp_grayscale(in_file, &pixels, &width, &height) != 0) {
+            printf("Failed to load %s\n", in_file);
+            return 1;
+        }
+    }
 
     int w = width, h = height;
     cplx* in = (cplx*)malloc(sizeof(cplx) * w * h);
@@ -78,54 +122,62 @@ int main(int argc, char** argv) {
     cplx* rec = (cplx*)malloc(sizeof(cplx) * w * h);
     if (!in || !out || !rec) { printf("Memory alloc failed\n"); return 1; }
 
-	// Преобразование в комплексный формат
+    // Преобразование в комплексный формат
     pixels_to_cplx(pixels, w, h, in);
 
-    printf("\nForward DFT start\n");
-    
+    if (mpi_rank == 0) printf("\nForward DFT start\n");
+
     set_progress_callback(progress_cb);
 
-	// Замер времени для прямого DFT
-    clock_t t0 = clock();
+    // Замер времени для прямого DFT
+    double t0 = MPI_Wtime();
     dft2d(in, out, w, h);
-    clock_t t1 = clock();
-    double forward_ms = (double)(t1 - t0) * 1000.0 / (double)CLOCKS_PER_SEC;
-    printf("Forward DFT is done for %.1f ms\n", forward_ms);
+    double t1 = MPI_Wtime();
 
-	// Отключить прогресс коллбек для сохранения изображений
+    if (mpi_rank == 0) {
+        double forward_ms = (t1 - t0) * 1000.0;
+        printf("Forward DFT is done for %.1f ms\n", forward_ms);
+    }
+
+    // Отключить прогресс коллбек для сохранения изображений
     set_progress_callback(NULL);
 
-	// Сохранить спектр в виде изображения
-    unsigned char* spec_img = (unsigned char*)malloc(w*h);
-    cplx_to_spectrum_image(out, w, h, spec_img);
-    if (save_bmp_grayscale(spectrum_file, spec_img, w, h) == 0) printf("Spectrum saved: %s\n", spectrum_file);
+    // Сохранить спектр в виде изображения (только на rank 0)
+    if (mpi_rank == 0) {
+        unsigned char* spec_img = (unsigned char*)malloc(w * h);
+        cplx_to_spectrum_image(out, w, h, spec_img);
+        if (save_bmp_grayscale(spectrum_file, spec_img, w, h) == 0) printf("Spectrum saved: %s\n", spectrum_file);
+        free(spec_img);
+    }
 
+    if (mpi_rank == 0) printf("\nInverse DFT start\n");
 
-    printf("\nInverse DFT start\n");
-	// Замер времени для обратного DFT
+    // Замер времени для обратного DFT
     set_progress_callback(progress_cb);
-    clock_t t2 = clock();
+    double t2 = MPI_Wtime();
     idft2d(out, rec, w, h);
-    clock_t t3 = clock();
-    double inverse_ms = (double)(t3 - t2) * 1000.0 / (double)CLOCKS_PER_SEC;
-    printf("Inverse DFT is done for %.1f ms\n", inverse_ms);
+    double t3 = MPI_Wtime();
 
-    unsigned char* rec_img = (unsigned char*)malloc(w*h);
-    cplx_to_pixels(rec, w, h, rec_img);
-    if (save_bmp_grayscale(recon_file, rec_img, w, h) == 0) printf("Recovered image saved: %s\n", recon_file);
+    if (mpi_rank == 0) {
+        double inverse_ms = (t3 - t2) * 1000.0;
+        printf("Inverse DFT is done for %.1f ms\n", inverse_ms);
+    }
 
-    free(pixels); free(in); free(out); free(rec); free(spec_img); free(rec_img);
+    // Сохранить восстановленное изображение (только на rank 0)
+    if (mpi_rank == 0) {
+        unsigned char* rec_img = (unsigned char*)malloc(w * h);
+        cplx_to_pixels(rec, w, h, rec_img);
+        if (save_bmp_grayscale(recon_file, rec_img, w, h) == 0) printf("Recovered image saved: %s\n", recon_file);
+        free(rec_img);
+    }
+
+    free(pixels); free(in); free(out); free(rec);
+
+    if (use_mpi) {
+#if defined(USE_MPI)
+        MPI_Finalize();
+#endif
+    }
 
     return 0;
 }
-
-// Запуск программы: CTRL+F5 или меню "Отладка" > "Запуск без отладки"
-// Отладка программы: F5 или меню "Отладка" > "Запустить отладку"
-
-// Советы по началу работы 
-//   1. В окне обозревателя решений можно добавлять файлы и управлять ими.
-//   2. В окне Team Explorer можно подключиться к системе управления версиями.
-//   3. В окне "Выходные данные" можно просматривать выходные данные сборки и другие сообщения.
-//   4. В окне "Список ошибок" можно просматривать ошибки.
-//   5. Последовательно выберите пункты меню "Проект" > "Добавить новый элемент", чтобы создать файлы кода, или "Проект" > "Добавить существующий элемент", чтобы добавить в проект существующие файлы кода.
-//   6. Чтобы снова открыть этот проект позже, выберите пункты меню "Файл" > "Открыть" > "Проект" и выберите SLN-файл.

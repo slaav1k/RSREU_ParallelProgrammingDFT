@@ -17,6 +17,8 @@ typedef void (*progress_cb_t)(const char* stage, int current, int total);
 void set_progress_callback(progress_cb_t cb);
 // Включить/отключить использование OpenMP (только если проект собран с поддержкой OpenMP)
 void set_use_omp(int use);
+// Enable/disable MPI backend at runtime (requires build with USE_MPI)
+void set_use_mpi(int use);
 // Установить количество потоков для OpenMP (0 — оставить по умолчанию)
 void set_num_threads(int n);
 
