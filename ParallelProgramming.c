@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <CL/cl.h>
 
 // Прогресс бар
 static void progress_cb(const char* stage, int current, int total) {
@@ -40,9 +41,81 @@ static int scale_and_save_from_pixels(unsigned char* pixels, int width, int heig
     return res;
 }
 
+
+void check_openCL() {
+    cl_int err;
+    cl_uint num_platforms = 0;
+
+    err = clGetPlatformIDs(0, NULL, &num_platforms);
+    if (err != CL_SUCCESS) {
+        printf("ERROR: clGetPlatformIDs return %d\n", err);
+        // можно return 1; если хочешь сразу выйти
+    }
+    else if (num_platforms == 0) {
+        printf("OpenCL dont find\n");
+    }
+    else {
+        printf("Find OpenCL count: %u\n", num_platforms);
+
+        cl_platform_id* platforms = (cl_platform_id*)malloc(sizeof(cl_platform_id) * num_platforms);
+        clGetPlatformIDs(num_platforms, platforms, NULL);
+
+        for (cl_uint i = 0; i < num_platforms; i++) {
+            char name[256] = { 0 };
+            char vendor[256] = { 0 };
+            char version[256] = { 0 };
+
+            clGetPlatformInfo(platforms[i], CL_PLATFORM_NAME, sizeof(name), name, NULL);
+            clGetPlatformInfo(platforms[i], CL_PLATFORM_VENDOR, sizeof(vendor), vendor, NULL);
+            clGetPlatformInfo(platforms[i], CL_PLATFORM_VERSION, sizeof(version), version, NULL);
+
+            printf("  Model %u: %s  |  %s  |  %s\n", i, name, vendor, version);
+
+            // Показываем устройства этой платформы
+            cl_uint num_devices = 0;
+            clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, 0, NULL, &num_devices);
+
+            if (num_devices > 0) {
+                cl_device_id* devices = (cl_device_id*)malloc(sizeof(cl_device_id) * num_devices);
+                clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_ALL, num_devices, devices, NULL);
+
+                for (cl_uint d = 0; d < num_devices; d++) {
+                    char dev_name[256] = { 0 };
+                    char dev_vendor[256] = { 0 };
+                    cl_device_type dev_type;
+                    cl_uint compute_units;
+
+                    clGetDeviceInfo(devices[d], CL_DEVICE_NAME, sizeof(dev_name), dev_name, NULL);
+                    clGetDeviceInfo(devices[d], CL_DEVICE_VENDOR, sizeof(dev_vendor), dev_vendor, NULL);
+                    clGetDeviceInfo(devices[d], CL_DEVICE_TYPE, sizeof(dev_type), &dev_type, NULL);
+                    clGetDeviceInfo(devices[d], CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(compute_units), &compute_units, NULL);
+
+                    printf("      GPU:  %u: %s  |  %s  |  ", d, dev_name, dev_vendor);
+
+                    if (dev_type & CL_DEVICE_TYPE_GPU)   printf("GPU ");
+                    if (dev_type & CL_DEVICE_TYPE_CPU)   printf("CPU ");
+                    if (dev_type & CL_DEVICE_TYPE_ACCELERATOR) printf("Accelerator ");
+                    printf("  |  Compute units: %u\n", compute_units);
+                }
+                free(devices);
+            }
+            else {
+                printf("      NO GPU\n\n");
+            }
+        }
+        free(platforms);
+    }
+}
+
 int main(int argc, char** argv) {
+    check_openCL();
+
+
+
+
+
     // Включить/выключить OMP здесь в коде
-    int flagOMP = 1;
+    int flagOMP = 0;
     int use_omp = flagOMP;
     const char* in_file = "resources/input.bmp";
     const char* spectrum_file = "resources/spectrum.bmp";
@@ -87,7 +160,7 @@ int main(int argc, char** argv) {
 
 	// Замер времени для прямого DFT
     clock_t t0 = clock();
-    dft2d(in, out, w, h);
+    dft2d_opencl(in, out, w, h);
     clock_t t1 = clock();
     double forward_ms = (double)(t1 - t0) * 1000.0 / (double)CLOCKS_PER_SEC;
     printf("Forward DFT is done for %.1f ms\n", forward_ms);
@@ -105,7 +178,7 @@ int main(int argc, char** argv) {
 	// Замер времени для обратного DFT
     set_progress_callback(progress_cb);
     clock_t t2 = clock();
-    idft2d(out, rec, w, h);
+    dft2d_opencl(out, rec, w, h, 1);
     clock_t t3 = clock();
     double inverse_ms = (double)(t3 - t2) * 1000.0 / (double)CLOCKS_PER_SEC;
     printf("Inverse DFT is done for %.1f ms\n", inverse_ms);

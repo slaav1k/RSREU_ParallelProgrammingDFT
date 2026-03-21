@@ -107,10 +107,14 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <CompileAs>CompileAsC</CompileAs>
       <OpenMPSupport>true</OpenMPSupport>
+      <AdditionalModuleDependencies>${OCL_ROOT}\include;%(AdditionalModuleDependencies)</AdditionalModuleDependencies>
+      <AdditionalIncludeDirectories>C:\Program Files (x86)\OCL_SDK_Light\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>OpenCL.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Program Files (x86)\OCL_SDK_Light\lib\x86_64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <CustomBuildStep>
       <Command>
@@ -147,6 +151,9 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="..\..\..\Downloads\input.bmp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="dft_kernel.cl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
