@@ -189,7 +189,7 @@ void idft2d(const cplx* in, cplx* out, int width, int height) {
 
 // Вспомогательная функция для чтения файла кернела
 char* load_kernel_source(const char* filename) {
-    FILE* f = fopen(filename, "r");
+    FILE* f = fopen(filename, "rb");
     fseek(f, 0, SEEK_END);
     size_t size = ftell(f);
     rewind(f);
